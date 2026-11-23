@@ -1,0 +1,19 @@
+# Quick self-hosted setup: the store + MongoDB. Put secrets in .env (see .env.example).
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes: [mongo-data:/data/db]
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/cv_gadgets
+      TRUST_PROXY: "1"
+    depends_on: [mongo]
+    ports: ["3000:3000"]
+    volumes: [uploads:/app/uploads]
+volumes:
+  mongo-data:
+  uploads:

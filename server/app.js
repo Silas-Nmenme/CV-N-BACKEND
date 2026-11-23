@@ -1,0 +1,133 @@
+import path from "node:path";
+import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import express from "express";
+import helmet from "helmet";
+import compression from "compression";
+import cookieParser from "cookie-parser";
+import { env } from "./config/env.js";
+import { apiLimiter } from "./middleware/rateLimit.js";
+import { originCheck, noSqlGuard } from "./middleware/security.js";
+import { errorHandler, notFound } from "./middleware/errorHandler.js";
+import { uploadRoot } from "./services/images.js";
+import { Product } from "./models/Product.js";
+import { getSettings } from "./models/Misc.js";
+
+import authRoutes from "./routes/auth.js";
+import accountRoutes from "./routes/account.js";
+import catalogRoutes from "./routes/catalog.js";
+import checkoutRoutes from "./routes/checkout.js";
+import paymentRoutes, { webhooks } from "./routes/payments.js";
+import publicRoutes from "./routes/public.js";
+import adminRoutes from "./routes/admin/index.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDir = path.resolve(__dirname, "../client");
+
+export function createApp() {
+  const app = express();
+  app.disable("x-powered-by");
+  app.set("trust proxy", env.trustProxy === "0" ? false : Number.isNaN(Number(env.trustProxy)) ? env.trustProxy : Number(env.trustProxy));
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          "default-src": ["'self'"],
+          "script-src": ["'self'"],
+          "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
+          "font-src": ["'self'", "https://fonts.gstatic.com"],
+          "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+          "connect-src": ["'self'"],
+          "frame-ancestors": ["'self'"],
+          "form-action": ["'self'"],
+          "object-src": ["'none'"],
+          "upgrade-insecure-requests": env.isProd ? [] : null,
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: "same-site" },
+    })
+  );
+  app.use(compression());
+
+  // Webhooks need the exact bytes the provider signed.
+  app.use(
+    express.json({
+      limit: "200kb",
+      verify(req, _res, buf) {
+        if (req.originalUrl.startsWith("/api/webhooks/")) req.rawBody = Buffer.from(buf);
+      },
+    })
+  );
+  app.use(cookieParser());
+
+  app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+  app.use("/api", apiLimiter, originCheck, noSqlGuard);
+  app.use("/api/auth", authRoutes);
+  app.use("/api/account", accountRoutes);
+  app.use("/api/payments", paymentRoutes);
+  app.use("/api/webhooks", webhooks);
+  app.use("/api/admin", adminRoutes);
+  app.use("/api", publicRoutes);
+  app.use("/api", catalogRoutes);
+  app.use("/api", checkoutRoutes);
+  app.use(notFound);
+
+  /* ----------------------------- static files ----------------------------- */
+  app.use(
+    "/uploads",
+    express.static(uploadRoot, { maxAge: "30d", immutable: true, setHeaders: (res) => res.set("X-Content-Type-Options", "nosniff") })
+  );
+  app.use("/assets", express.static(path.join(clientDir, "assets"), { maxAge: env.isProd ? "7d" : 0 }));
+  app.use("/admin/assets", express.static(path.join(clientDir, "admin", "assets"), { maxAge: env.isProd ? "1d" : 0 }));
+  for (const f of ["favicon.svg", "robots.txt"]) app.get(`/${f}`, (req, res) => res.sendFile(path.join(clientDir, f)));
+
+  const page = (file) => (req, res) => res.sendFile(path.join(clientDir, file));
+  const routes = {
+    "/": "index.html", "/shop": "shop.html", "/cart": "cart.html", "/checkout": "checkout.html", "/order": "order.html",
+    "/payment-result": "payment-result.html", "/receipt": "receipt.html", "/login": "login.html", "/register": "register.html",
+    "/forgot-password": "forgot-password.html", "/reset-password": "reset-password.html", "/account": "account.html",
+    "/wishlist": "wishlist.html", "/contact": "contact.html", "/track-order": "track-order.html",
+    "/about": "content.html", "/faq": "content.html", "/privacy-policy": "content.html", "/terms": "content.html",
+    "/shipping-policy": "content.html", "/returns-policy": "content.html", "/unsubscribe": "unsubscribe.html",
+  };
+  for (const [url, file] of Object.entries(routes)) app.get(url, page(file));
+  app.get(["/category/:slug", "/brand/:slug"], page("shop.html"));
+  app.get(["/admin", "/admin/"], (req, res) => {
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+    res.sendFile(path.join(clientDir, "admin", "index.html"));
+  });
+
+  // Product pages: server inserts title/description/OG tags so links shared on WhatsApp and Google look right.
+  let productTemplate;
+  app.get("/p/:slug", async (req, res, next) => {
+    try {
+      productTemplate ||= await fs.readFile(path.join(clientDir, "product.html"), "utf8");
+      const [p, s] = await Promise.all([Product.findOne({ slug: String(req.params.slug).toLowerCase(), active: true }, "name brandName description images minPrice totalStock slug").lean(), getSettings()]);
+      const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      let head = "";
+      if (p) {
+        const desc = esc((p.description || `${p.name} from ${s.store.name}`).slice(0, 155));
+        const img = p.images?.[0]?.url ? (p.images[0].url.startsWith("http") ? p.images[0].url : env.appUrl + p.images[0].url) : "";
+        const ld = {
+          "@context": "https://schema.org", "@type": "Product", name: p.name, brand: { "@type": "Brand", name: p.brandName }, image: img || undefined, description: p.description?.slice(0, 300),
+          offers: { "@type": "Offer", priceCurrency: "NGN", price: p.minPrice, availability: p.totalStock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", url: `${env.appUrl}/p/${p.slug}` },
+        };
+        head = `<title>${esc(p.name)} | ${esc(s.store.name)}</title><meta name="description" content="${desc}"><meta property="og:title" content="${esc(p.name)}"><meta property="og:description" content="${desc}">${img ? `<meta property="og:image" content="${esc(img)}">` : ""}<meta property="og:type" content="product"><link rel="canonical" href="${env.appUrl}/p/${esc(p.slug)}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`;
+      } else {
+        res.status(404);
+        head = `<title>Product not found | ${esc(s.store.name)}</title><meta name="robots" content="noindex">`;
+      }
+      res.type("html").send(productTemplate.replace("<!--SEO-->", head));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.use((req, res) => res.status(404).sendFile(path.join(clientDir, "404.html")));
+  app.use(errorHandler);
+  return app;
+}
