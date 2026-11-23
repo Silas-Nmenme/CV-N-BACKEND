@@ -12,6 +12,7 @@ import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { uploadRoot } from "./services/images.js";
 import { Product } from "./models/Product.js";
 import { getSettings } from "./models/Misc.js";
+import { expireStaleOrders } from "./services/orders.js";
 
 import authRoutes from "./routes/auth.js";
 import accountRoutes from "./routes/account.js";
@@ -91,39 +92,13 @@ export function createApp({ serveFrontend = true } = {}) {
   app.use("/api", publicRoutes);
   app.use("/api", catalogRoutes);
   app.use("/api", checkoutRoutes);
-  app.use(notFound);
-
-  if (!serveFrontend) {
-    app.get("/", (_req, res) => res.json({ ok: true, service: "CV GADGETS API" }));
-    app.use((req, res) => res.status(404).json({ success: false, message: "That endpoint does not exist." }));
-    app.use(errorHandler);
-    return app;
-  }
-
-  /* ----------------------------- static files ----------------------------- */
+  // These routes are also needed by the separate Vercel API deployment.
+  // Cloudinary is the persistent store for new uploads; this static route only
+  // serves any bundled/legacy files that still exist in the deployment.
   app.use(
     "/uploads",
     express.static(uploadRoot, { maxAge: "30d", immutable: true, setHeaders: (res) => res.set("X-Content-Type-Options", "nosniff") })
   );
-  app.use("/assets", express.static(path.join(clientDir, "assets"), { maxAge: env.isProd ? "7d" : 0 }));
-  app.use("/admin/assets", express.static(path.join(clientDir, "admin", "assets"), { maxAge: env.isProd ? "1d" : 0 }));
-  for (const f of ["favicon.svg", "robots.txt"]) app.get(`/${f}`, (req, res) => res.sendFile(path.join(clientDir, f)));
-
-  const page = (file) => (req, res) => res.sendFile(path.join(clientDir, file));
-  const routes = {
-    "/": "index.html", "/shop": "shop.html", "/cart": "cart.html", "/checkout": "checkout.html", "/order": "order.html",
-    "/payment-result": "payment-result.html", "/receipt": "receipt.html", "/login": "login.html", "/register": "register.html",
-    "/forgot-password": "forgot-password.html", "/reset-password": "reset-password.html", "/account": "account.html",
-    "/wishlist": "wishlist.html", "/contact": "contact.html", "/track-order": "track-order.html",
-    "/about": "content.html", "/faq": "content.html", "/privacy-policy": "content.html", "/terms": "content.html",
-    "/shipping-policy": "content.html", "/returns-policy": "content.html", "/unsubscribe": "unsubscribe.html",
-  };
-  for (const [url, file] of Object.entries(routes)) app.get(url, page(file));
-  app.get(["/category/:slug", "/brand/:slug"], page("shop.html"));
-  app.get(["/admin", "/admin/"], (req, res) => {
-    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
-    res.sendFile(path.join(clientDir, "admin", "index.html"));
-  });
 
   // Product pages: server inserts title/description/OG tags so links shared on WhatsApp and Google look right.
   let productTemplate;
@@ -149,6 +124,52 @@ export function createApp({ serveFrontend = true } = {}) {
     } catch (e) {
       next(e);
     }
+  });
+
+
+  // Vercel Cron calls this endpoint with Authorization: Bearer <CRON_SECRET>.
+  app.get("/api/cron/expire-orders", async (req, res, next) => {
+    try {
+      const secret = process.env.CRON_SECRET;
+      const authorization = req.get("authorization") || "";
+      if (!secret || authorization !== `Bearer ${secret}`) {
+        return res.status(401).json({ success: false, message: "Unauthorized." });
+      }
+      const released = await expireStaleOrders();
+      return res.json({ success: true, released });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.use(notFound);
+
+  if (!serveFrontend) {
+    app.get("/", (_req, res) => res.json({ ok: true, service: "CV GADGETS API" }));
+    app.use((req, res) => res.status(404).json({ success: false, message: "That endpoint does not exist." }));
+    app.use(errorHandler);
+    return app;
+  }
+
+  /* ----------------------------- static files ----------------------------- */
+  app.use("/assets", express.static(path.join(clientDir, "assets"), { maxAge: env.isProd ? "7d" : 0 }));
+  app.use("/admin/assets", express.static(path.join(clientDir, "admin", "assets"), { maxAge: env.isProd ? "1d" : 0 }));
+  for (const f of ["favicon.svg", "robots.txt"]) app.get(`/${f}`, (req, res) => res.sendFile(path.join(clientDir, f)));
+
+  const page = (file) => (req, res) => res.sendFile(path.join(clientDir, file));
+  const routes = {
+    "/": "index.html", "/shop": "shop.html", "/cart": "cart.html", "/checkout": "checkout.html", "/order": "order.html",
+    "/payment-result": "payment-result.html", "/receipt": "receipt.html", "/login": "login.html", "/register": "register.html",
+    "/forgot-password": "forgot-password.html", "/reset-password": "reset-password.html", "/account": "account.html",
+    "/wishlist": "wishlist.html", "/contact": "contact.html", "/track-order": "track-order.html",
+    "/about": "content.html", "/faq": "content.html", "/privacy-policy": "content.html", "/terms": "content.html",
+    "/shipping-policy": "content.html", "/returns-policy": "content.html", "/unsubscribe": "unsubscribe.html",
+  };
+  for (const [url, file] of Object.entries(routes)) app.get(url, page(file));
+  app.get(["/category/:slug", "/brand/:slug"], page("shop.html"));
+  app.get(["/admin", "/admin/"], (req, res) => {
+    res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+    res.sendFile(path.join(clientDir, "admin", "index.html"));
   });
 
   app.use((req, res) => res.status(404).sendFile(path.join(clientDir, "404.html")));

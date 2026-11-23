@@ -41,6 +41,10 @@ export async function saveImage(buffer, { folder = "products", max = 1400, thumb
     throw new HttpError(400, "That file is not a valid image. Use JPG, PNG, WebP or AVIF.");
   }
 
+  if (env.isProd && !cloudEnabled) {
+    throw new HttpError(503, "Image uploads are not configured. Set the Cloudinary environment variables.");
+  }
+
   if (cloudEnabled) {
     const [a, b] = await Promise.all([uploadToCloudinary(main, folder), uploadToCloudinary(small, `${folder}/thumbs`)]);
     return { url: a.secure_url, thumb: b.secure_url, publicId: `${a.public_id}|${b.public_id}` };

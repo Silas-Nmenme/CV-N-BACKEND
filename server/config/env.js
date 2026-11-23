@@ -70,6 +70,7 @@ export const env = {
 
   pendingOrderMinutes: num(process.env.PENDING_ORDER_MINUTES, 60),
   bankTransferHoldHours: num(process.env.BANK_TRANSFER_HOLD_HOURS, 24),
+  cronSecret: process.env.CRON_SECRET || "",
 };
 
 export const paystackEnabled = () => Boolean(env.paystack.secretKey);
