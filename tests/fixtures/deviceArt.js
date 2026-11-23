@@ -1,4 +1,4 @@
-/** Generates clean SVG device illustrations used for DEMO products only. Real stores upload photos in Admin. */
+/** Generates SVG images for test catalogue fixtures. */
 const COLORS = {
   Black: ["#1b1d22", "#2c2f36"], "Space Black": ["#202226", "#34373d"], Graphite: ["#3a3d42", "#4c5057"], Midnight: ["#1f2530", "#2e3644"],
   White: ["#f4f5f7", "#dfe2e8"], Silver: ["#d9dce1", "#bfc4cc"], Starlight: ["#ece6dc", "#d9d1c3"], Gold: ["#e6d3b3", "#cdb48a"],

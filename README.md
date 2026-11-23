@@ -30,9 +30,10 @@ Each **category carries its own template**: the specification fields (Processor,
 npm install
 cp .env.example .env        # then edit .env (see below)
 npm run seed                # creates categories, brands, delivery zones, policy pages, and your admin
-npm run seed:demo           # OPTIONAL: adds ~40 sample products with SAMPLE prices so the store isn't empty
 npm run dev                 # http://localhost:3000   (admin at /admin)
 ```
+
+Add real products through Admin → Products. The storefront loads catalogue data from the API/database and does not include a bundled sample catalogue.
 
 Minimum `.env` for local development:
 
@@ -72,7 +73,7 @@ MongoDB is schema-less, so there are no SQL migrations. Instead:
 
 1. **Delivery** → Admin → Delivery zones: the seed creates the zones **inactive with ₦0 fees** (a business decision only you can make). Set real fees and tick *Zone is active*. Customers cannot check out to a state without an active zone.
 2. **Settings:** add your phone, WhatsApp, email, address, opening hours, social links, and bank details if you accept transfers.
-3. **Products:** if you ran `seed:demo`, delete the sample products (their prices are placeholders), the sample coupon `WELCOME5`, the sample testimonials and the sample banners. Add real products with real photos.
+3. **Products:** add real products with real photos in Admin → Products.
 4. **Pages:** read and adjust About, FAQ, Privacy, Terms, Shipping and Returns in Admin → Content pages. They are sensible starting points, not legal advice. Have them reviewed for your business.
 5. **Security:** use a new strong `JWT_SECRET`, a strong admin password, HTTPS, and live (not test) payment keys.
 6. **Email:** configure SMTP so customers receive receipts and password-reset links.
@@ -96,19 +97,19 @@ server/
   routes/                   public + customer API; routes/admin/* = dashboard API
   services/                 pricing/coupons, delivery, stock + order lifecycle, payment gateways, email, images
   middleware/               auth + permissions, validation, rate limits, CSRF/NoSQL guards, errors
-  scripts/                  seed, create-admin, demo data
+  scripts/                  base seed, create-admin
 frontend/
   *.html                    page shells
   assets/css, assets/js     design system + modules (core/ = shared, pages/ = one file per page)
   admin/                    admin single-page app
-tests/                      automated API tests (node:test) + gateway stub
+tests/                      automated API tests (node:test), test fixtures + gateway stub
 docs/DEPLOYMENT.md          production deployment guide
 ```
 
 ## Testing
 
 ```bash
-npm test      # 35 API tests against a throwaway database (needs a local MongoDB on 127.0.0.1:27017)
+npm test      # API tests against a throwaway database (needs a local MongoDB on 127.0.0.1:27017)
 ```
 
 The tests run the real server against a stub Paystack/Flutterwave, covering registration and lockout, password reset, pricing and coupons, concurrent last-item purchases, payment verification (success, failure, wrong amount, replayed and forged webhooks), order expiry, bank transfers, admin permissions, product/category CRUD, image upload validation, reviews and reports.
@@ -121,7 +122,7 @@ Admin: `/api/admin/*` (requires a staff session; each route checks the role's pe
 
 ## Notes
 
-- Product photos: demo products use generated illustrations. Upload real photos in Admin → Products (JPG/PNG/WebP/AVIF; resized and converted to WebP automatically). Set `CLOUDINARY_*` to store images in Cloudinary instead of server disk.
+- Product photos: upload real photos in Admin → Products (JPG/PNG/WebP/AVIF; resized and converted to WebP automatically). Set `CLOUDINARY_*` to store images in Cloudinary instead of server disk.
 - Newsletter: the store collects subscribers (Admin → Subscribers → Export CSV). Send campaigns from your email tool of choice.
 - The storefront is a fast multi-page app with server-inserted SEO tags and structured data on product pages.
 # CV-N-BACKEND

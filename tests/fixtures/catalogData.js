@@ -1,17 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Brand } from "../models/Brand.js";
-import { Category } from "../models/Category.js";
-import { Product } from "../models/Product.js";
-import { Coupon } from "../models/Coupon.js";
-import { Banner, Testimonial, getSettings } from "../models/Misc.js";
-import { slugify } from "../utils/helpers.js";
-import { uploadRoot } from "../services/images.js";
+import { Brand } from "../../server/models/Brand.js";
+import { Category } from "../../server/models/Category.js";
+import { Product } from "../../server/models/Product.js";
+import { Coupon } from "../../server/models/Coupon.js";
+import { Banner, Testimonial, getSettings } from "../../server/models/Misc.js";
+import { slugify } from "../../server/utils/helpers.js";
+import { uploadRoot } from "../../server/services/images.js";
 import { deviceSvg } from "./deviceArt.js";
 
 /**
- * DEMO catalogue: sample products and SAMPLE prices so the store is not empty on first run.
- * Delete them in Admin > Products (or never run `npm run seed:demo` on a live database).
+ * Test-only catalogue fixtures; never imported by the application or production seed.
  */
 const v = (sku, attrs, price, stock, extra = {}) => ({ sku, attrs, price, stock, ...extra });
 const NEW = "Brand New", UK = "UK Used";
@@ -24,7 +23,7 @@ const iphone = (series, chip, cam, variants, flags = {}) => ({
   description: `${series} with fast performance and an excellent camera system. Condition and battery health are listed for every option, so you know exactly what you are buying.`,
 });
 
-export const DEMO_PRODUCTS = [
+const TEST_PRODUCTS = [
   iphone("iPhone 17 Pro", "A19 Pro", "48MP triple camera", [v("IP17P-256-NT-N", { storage: "256GB", ram: "12GB", colour: "Natural Titanium", condition: NEW }, 2150000, 6), v("IP17P-512-NT-N", { storage: "512GB", ram: "12GB", colour: "Natural Titanium", condition: NEW }, 2450000, 3), v("IP17P-256-BL-N", { storage: "256GB", ram: "12GB", colour: "Deep Blue", condition: NEW }, 2150000, 0)], { featured: true, newArrival: true }),
   iphone("iPhone 16", "A18", "48MP dual camera", [v("IP16-128-BK-N", { storage: "128GB", ram: "8GB", colour: "Black", condition: NEW }, 1250000, 8, { comparePrice: 1320000 }), v("IP16-256-PK-N", { storage: "256GB", ram: "8GB", colour: "Pink", condition: NEW }, 1420000, 4), v("IP16-128-BK-U", { storage: "128GB", ram: "8GB", colour: "Black", condition: UK }, 1020000, 5, { batteryHealth: 96 })], { featured: true, newArrival: true, bestseller: true }),
   iphone("iPhone 15 Pro Max", "A17 Pro", "48MP triple camera", [v("IP15PM-256-NT-U", { storage: "256GB", ram: "8GB", colour: "Natural Titanium", condition: UK }, 1180000, 4, { batteryHealth: 93 }), v("IP15PM-512-BK-U", { storage: "512GB", ram: "8GB", colour: "Titanium Black", condition: UK }, 1350000, 2, { batteryHealth: 91 })], { featured: true, onOffer: true }),
@@ -195,12 +194,12 @@ export async function writeArt(product) {
   return files;
 }
 
-export async function seedDemo() {
+export async function seedTestCatalog() {
   const brands = Object.fromEntries((await Brand.find().lean()).map((b) => [b.name, b]));
   const cats = Object.fromEntries((await Category.find().lean()).map((c) => [c.slug, c]));
   const settings = await getSettings();
   let created = 0;
-  for (const d of DEMO_PRODUCTS) {
+  for (const d of TEST_PRODUCTS) {
     const slug = slugify(d.name);
     if (await Product.exists({ slug })) continue;
     const images = await writeArt(d);

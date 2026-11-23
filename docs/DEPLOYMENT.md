@@ -19,7 +19,7 @@ sudo npm i -g pm2
 git clone <your-repo> /var/www/cv-gadgets && cd /var/www/cv-gadgets
 npm ci --omit=dev
 cp .env.example .env && nano .env        # fill in the values
-npm run seed                             # base data + admin (do NOT run seed:demo on a live store)
+npm run seed                             # base data + admin; add real products in the dashboard
 
 # 3. Run it
 pm2 start ecosystem.config.cjs
@@ -84,12 +84,12 @@ The root `index.js` exports the Express app for Vercel Functions and connects to
    - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` for product image uploads. Vercel's filesystem is not persistent; do not rely on local `uploads/`.
    - Add payment and SMTP secrets only when those services are configured.
 3. Deploy, then test `https://YOUR-BACKEND.vercel.app/healthz` and `https://YOUR-BACKEND.vercel.app/api/config`.
-4. Configure the storefront to send API requests to the backend and include credentials for session cookies. For reliable cookie login, use a custom domain and keep the storefront and API on the same site, or proxy `/api/*` through the storefront domain; separate `*.vercel.app` domains may be treated as third-party cookies by browsers.
+4. In the separate frontend Vercel project, set **Root Directory** to `frontend`. Its `vercel.json` proxies `/api/*` through the storefront domain to the backend, so login cookies are first-party and the browser does not need cross-origin API access. Keep the backend URL in `frontend/assets/js/core/api-config.js` aligned with your deployed API. Local development continues to call the backend directly.
 5. Update Paystack/Flutterwave webhook URLs to `https://YOUR-BACKEND.vercel.app/api/webhooks/paystack` and `/api/webhooks/flutterwave`.
 
 Vercel Functions do not keep the `server/index.js` interval alive, so the expired-order stock sweeper must be run through a scheduled job before relying on order expiry. Uploaded images must use Cloudinary or another persistent object store.
 
-For the separate static storefront project, set its Vercel **Root Directory** to `frontend`. The `frontend/vercel.json` rewrites clean links such as `/shop`, `/category/:slug`, and `/p/:slug` to their HTML shells; deploy the frontend again after changing this file.
+The `frontend/vercel.json` rewrites API calls and clean links such as `/shop`, `/category/:slug`, and `/p/:slug`; deploy the frontend again after changing this file.
 
 ## After deployment
 

@@ -9,7 +9,6 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "seed": "node server/scripts/seed.js",
-    "seed:demo": "node server/scripts/seed.js --demo",
     "create-admin": "node server/scripts/createAdmin.js",
     "test": "node --test --test-concurrency=1 \"tests/*.test.js\""
   },

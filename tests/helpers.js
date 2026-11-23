@@ -86,9 +86,16 @@ export async function bootstrap({ dbName, gateway } = {}) {
   const { ensureIndexes } = await import("../server/scripts/indexes.js");
   await ensureIndexes();
   const { seedBase, seedAdmin } = await import("../server/scripts/baseData.js");
-  const { seedDemo } = await import("../server/scripts/demoData.js");
-  await seedBase({ demo: true });
-  await seedDemo();
+  await seedBase();
+  const { ShippingZone } = await import("../server/models/ShippingZone.js");
+  const zoneFees = [3500, 5500, 6500, 7000, 9000];
+  for (const zone of await ShippingZone.find().sort({ sortOrder: 1 })) {
+    zone.active = true;
+    zone.methods[0].fee = zoneFees[zone.sortOrder] ?? 0;
+    await zone.save();
+  }
+  const { seedTestCatalog } = await import("./fixtures/catalogData.js");
+  await seedTestCatalog();
   await seedAdmin("owner@test.ng", "Owner12345", "Owner");
   const { createApp } = await import("../server/app.js");
   const app = createApp();

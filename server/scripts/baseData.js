@@ -126,17 +126,15 @@ const ZONE_DEFS = [
 
 /**
  * Delivery fees are a business decision, so the base seed creates the zones with a N0 fee and
- * leaves them INACTIVE: checkout will say "we don't deliver there yet" until the owner reviews
- * and activates them in Admin > Delivery. (The demo seed fills in sample fees.)
+ * leaves them inactive until the owner reviews and activates them in Admin > Delivery.
  */
-export async function seedZones({ demo = false } = {}) {
+export async function seedZones() {
   if (await ShippingZone.estimatedDocumentCount()) return;
-  const demoFees = [3500, 5500, 6500, 7000, 9000];
   let i = 0;
   for (const z of ZONE_DEFS) {
     await ShippingZone.create({
-      name: z.name, states: z.states, sortOrder: i, active: demo,
-      methods: [{ code: "standard", name: "Standard delivery", fee: demo ? demoFees[i] : 0, freeOver: null, etaMinDays: i === 0 ? 1 : 2, etaMaxDays: i === 0 ? 2 : 5 }],
+      name: z.name, states: z.states, sortOrder: i, active: false,
+      methods: [{ code: "standard", name: "Standard delivery", fee: 0, freeOver: null, etaMinDays: i === 0 ? 1 : 2, etaMaxDays: i === 0 ? 2 : 5 }],
     });
     i++;
   }
@@ -269,10 +267,10 @@ export async function seedAdmin(email = env.adminEmail, password = env.adminPass
   return { created: true, user };
 }
 
-export async function seedBase({ demo = false } = {}) {
+export async function seedBase() {
   await getSettings();
   await seedCategories();
   await seedBrands();
-  await seedZones({ demo });
+  await seedZones();
   await seedPages();
 }
