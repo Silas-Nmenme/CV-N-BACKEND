@@ -29,6 +29,10 @@ before(async () => {
 after(async () => ctx.close());
 
 test("configured storefront gets credentialed CORS and preflight access", async () => {
+  const shopPage = await fetch(`${ctx.base}/shop`);
+  assert.equal(shopPage.status, 200);
+  assert.match(await shopPage.text(), /CV GADGETS/);
+
   const { createApp } = await import("../server/app.js");
   const apiOnlyServer = http.createServer(createApp({ serveFrontend: false }));
   await new Promise((resolve) => apiOnlyServer.listen(0, "127.0.0.1", resolve));

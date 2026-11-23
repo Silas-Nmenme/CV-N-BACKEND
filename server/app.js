@@ -22,7 +22,7 @@ import publicRoutes from "./routes/public.js";
 import adminRoutes from "./routes/admin/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const clientDir = path.resolve(__dirname, "../client");
+const clientDir = path.resolve(__dirname, "../frontend");
 
 export function createApp({ serveFrontend = true } = {}) {
   const app = express();

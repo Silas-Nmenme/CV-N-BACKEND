@@ -97,7 +97,7 @@ server/
   services/                 pricing/coupons, delivery, stock + order lifecycle, payment gateways, email, images
   middleware/               auth + permissions, validation, rate limits, CSRF/NoSQL guards, errors
   scripts/                  seed, create-admin, demo data
-client/
+frontend/
   *.html                    page shells
   assets/css, assets/js     design system + modules (core/ = shared, pages/ = one file per page)
   admin/                    admin single-page app

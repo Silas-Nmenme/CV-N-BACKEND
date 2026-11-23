@@ -89,6 +89,8 @@ The root `index.js` exports the Express app for Vercel Functions and connects to
 
 Vercel Functions do not keep the `server/index.js` interval alive, so the expired-order stock sweeper must be run through a scheduled job before relying on order expiry. Uploaded images must use Cloudinary or another persistent object store.
 
+For the separate static storefront project, set its Vercel **Root Directory** to `frontend`. The `frontend/vercel.json` rewrites clean links such as `/shop`, `/category/:slug`, and `/p/:slug` to their HTML shells; deploy the frontend again after changing this file.
+
 ## After deployment
 
 - Add the **webhook URLs** to Paystack and Flutterwave (see README).

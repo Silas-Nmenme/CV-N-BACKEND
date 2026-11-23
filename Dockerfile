@@ -4,6 +4,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY server ./server
+COPY frontend ./frontend
 RUN mkdir -p uploads && chown -R node:node /app
 USER node
 EXPOSE 5000
