@@ -69,7 +69,7 @@ export async function bootstrap({ dbName, gateway } = {}) {
     FLW_BASE_URL: gateway.url,
     APP_URL: "https://cvgadgets.vercel.app",
     STOREFRONT_URL: "https://cvgadgets.vercel.app",
-    ALLOWED_ORIGINS: "https://store.example.test",
+    ALLOWED_ORIGINS: "https://store.example.test,https://cvgadgets.vercel.app",
     SMTP_HOST: "",
     SMTP_USER: "",
     SMTP_PASS: "",

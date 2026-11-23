@@ -50,6 +50,11 @@ test("configured storefront gets credentialed CORS and preflight access", async 
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
   assert.equal(response.headers.get("access-control-allow-credentials"), "true");
 
+  const deployedStore = await fetch(`${ctx.base}/api/config`, {
+    headers: { Origin: "https://cvgadgets.vercel.app" },
+  });
+  assert.equal(deployedStore.headers.get("access-control-allow-origin"), "https://cvgadgets.vercel.app");
+
   const preflight = await fetch(`${ctx.base}/api/auth/login`, {
     method: "OPTIONS",
     headers: {

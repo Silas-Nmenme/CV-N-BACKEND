@@ -79,7 +79,7 @@ The root `index.js` exports the Express app for Vercel Functions and connects to
    - `JWT_SECRET` — a new random secret of at least 32 characters.
    - `APP_URL` — the deployed backend URL. Payment webhook URLs are based on this value.
    - `STOREFRONT_URL` — the public storefront URL used for payment returns and customer email links.
-   - `ALLOWED_ORIGINS` — comma-separated, exact storefront origin(s), including `https://` and no trailing slash. This also accepts the legacy `FRONTEND_ORIGINS` name.
+   - `ALLOWED_ORIGINS=https://cvgadgets.vercel.app` — exact storefront origin, including `https://` and no trailing slash. Comma-separate any additional origins. The legacy `FRONTEND_ORIGINS` name is also accepted.
    - `ADMIN_EMAIL` and `ADMIN_PASSWORD` — use a strong, new admin password.
    - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` for product image uploads. Vercel's filesystem is not persistent; do not rely on local `uploads/`.
    - Add payment and SMTP secrets only when those services are configured.

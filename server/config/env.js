@@ -18,7 +18,11 @@ if (isProd && jwtSecret.length < 32) {
   throw new Error("JWT_SECRET must be at least 32 characters in production.");
 }
 const appUrl = (process.env.APP_URL || `http://localhost:${num(process.env.PORT, 5000)}`).replace(/\/+$/, "");
-const allowedOrigins = [process.env.ALLOWED_ORIGINS, process.env.FRONTEND_ORIGINS].filter(Boolean).join(",");
+const allowedOrigins = [
+  ...(isProd ? ["https://cvgadgets.vercel.app"] : []),
+  process.env.ALLOWED_ORIGINS,
+  process.env.FRONTEND_ORIGINS,
+].filter(Boolean).join(",");
 
 export const env = {
   isProd,
