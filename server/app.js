@@ -80,7 +80,7 @@ export function createApp({ serveFrontend = true } = {}) {
   );
   app.use(cookieParser());
 
-  app.get("/health", (req, res) => res.json({ ok: true }));
+  app.get(["/health", "/healthz"], (req, res) => res.json({ ok: true }));
 
   app.use("/api", apiLimiter, originCheck, noSqlGuard);
   app.use("/api/auth", authRoutes);

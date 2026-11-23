@@ -28,6 +28,10 @@ before(async () => {
 after(async () => ctx.close());
 
 test("configured storefront gets credentialed CORS and preflight access", async () => {
+  const health = await fetch(`${ctx.base}/healthz`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { ok: true });
+
   const origin = "https://store.example.test";
   const response = await fetch(`${ctx.base}/api/config`, { headers: { Origin: origin } });
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
