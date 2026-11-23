@@ -28,7 +28,7 @@ router.get(
       if (parent) parent.children.push(node);
       else if (!c.parent) roots.push(node);
     }
-    res.set("Cache-Control", "public, max-age=60");
+    res.set("Cache-Control", req.get("Origin") ? "private, no-store" : "public, max-age=60");
     res.json({ success: true, categories: roots });
   })
 );
@@ -41,7 +41,7 @@ router.get(
   "/brands",
   asyncHandler(async (req, res) => {
     const brands = await Brand.find({ active: true }).sort({ sortOrder: 1, name: 1 }).lean();
-    res.set("Cache-Control", "public, max-age=60");
+    res.set("Cache-Control", req.get("Origin") ? "private, no-store" : "public, max-age=60");
     res.json({ success: true, brands: brands.map((b) => ({ id: String(b._id), name: b.name, slug: b.slug, logo: b.logo, description: b.description })) });
   })
 );

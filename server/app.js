@@ -30,9 +30,9 @@ export function createApp({ serveFrontend = true } = {}) {
   app.set("trust proxy", env.trustProxy === "0" ? false : Number.isNaN(Number(env.trustProxy)) ? env.trustProxy : Number(env.trustProxy));
 
   app.use((req, res, next) => {
+    res.vary("Origin");
     const origin = req.get("Origin")?.replace(/\/+$/, "");
     if (origin && env.extraOrigins.includes(origin)) {
-      res.vary("Origin");
       res.set("Access-Control-Allow-Origin", origin);
       res.set("Access-Control-Allow-Credentials", "true");
       if (req.method === "OPTIONS") {

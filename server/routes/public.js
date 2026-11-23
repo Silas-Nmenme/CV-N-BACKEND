@@ -17,7 +17,7 @@ router.get(
     const s = await getSettings();
     const methods = await availablePaymentMethods();
     const wa = String(s.store.whatsapp || "").replace(/\D/g, "");
-    res.set("Cache-Control", "public, max-age=30");
+    res.set("Cache-Control", req.get("Origin") ? "private, no-store" : "public, max-age=30");
     res.json({
       success: true,
       store: { ...s.store.toObject(), whatsapp: wa },
@@ -48,7 +48,7 @@ router.get(
         name: r.authorName.split(" ")[0], text: r.body.slice(0, 280), rating: r.rating,
       }));
     }
-    res.set("Cache-Control", "public, max-age=30");
+    res.set("Cache-Control", req.get("Origin") ? "private, no-store" : "public, max-age=30");
     res.json({
       success: true,
       hero: banners.filter((b) => b.placement === "hero"),

@@ -33,6 +33,9 @@ test("configured storefront gets credentialed CORS and preflight access", async 
   assert.equal(shopPage.status, 200);
   assert.match(await shopPage.text(), /CV GADGETS/);
 
+  const noOrigin = await fetch(`${ctx.base}/api/config`);
+  assert.match(noOrigin.headers.get("vary") || "", /(?:^|,\s*)Origin(?:\s*,|$)/i);
+
   const { createApp } = await import("../server/app.js");
   const apiOnlyServer = http.createServer(createApp({ serveFrontend: false }));
   await new Promise((resolve) => apiOnlyServer.listen(0, "127.0.0.1", resolve));
@@ -53,11 +56,16 @@ test("configured storefront gets credentialed CORS and preflight access", async 
   const response = await fetch(`${ctx.base}/api/config`, { headers: { Origin: origin } });
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
   assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
 
   const deployedStore = await fetch(`${ctx.base}/api/config`, {
     headers: { Origin: "https://cvgadgets.vercel.app" },
   });
   assert.equal(deployedStore.headers.get("access-control-allow-origin"), "https://cvgadgets.vercel.app");
+
+  const categories = await fetch(`${ctx.base}/api/categories`, { headers: { Origin: "https://cvgadgets.vercel.app" } });
+  assert.equal(categories.headers.get("access-control-allow-origin"), "https://cvgadgets.vercel.app");
+  assert.equal(categories.headers.get("cache-control"), "private, no-store");
 
   const preflight = await fetch(`${ctx.base}/api/auth/login`, {
     method: "OPTIONS",
