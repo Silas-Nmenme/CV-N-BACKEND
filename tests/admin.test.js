@@ -27,6 +27,30 @@ before(async () => {
 });
 after(async () => ctx.close());
 
+test("configured storefront gets credentialed CORS and preflight access", async () => {
+  const origin = "https://store.example.test";
+  const response = await fetch(`${ctx.base}/api/config`, { headers: { Origin: origin } });
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+
+  const preflight = await fetch(`${ctx.base}/api/auth/login`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: origin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-methods").includes("POST"), true);
+
+  const denied = await fetch(`${ctx.base}/api/auth/login`, {
+    method: "OPTIONS",
+    headers: { Origin: "https://untrusted.example.test", "Access-Control-Request-Method": "POST" },
+  });
+  assert.equal(denied.status, 403);
+});
+
 async function settings() {
   return (await admin.get("/api/admin/settings")).data;
 }

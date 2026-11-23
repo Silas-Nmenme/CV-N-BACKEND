@@ -27,7 +27,7 @@ export async function initializePayment(order, provider) {
   const attempt = (await Payment.countDocuments({ order: order._id })) + 1;
   const reference = `${order.reference}-P${attempt}`;
   const settings = await getSettings();
-  const callbackUrl = `${env.appUrl}/payment-result?order=${encodeURIComponent(order.reference)}`;
+  const callbackUrl = `${env.storefrontUrl}/payment-result?order=${encodeURIComponent(order.reference)}`;
   let url;
 
   if (provider === "paystack") {

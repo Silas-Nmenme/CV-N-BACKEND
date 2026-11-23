@@ -71,7 +71,7 @@ ${line("Total", formatNaira(order.total), true)}</table>`;
 
 export async function sendOrderConfirmation(order) {
   const s = (await getSettings()).store;
-  const trackUrl = `${env.appUrl}/order?ref=${encodeURIComponent(order.reference)}`;
+  const trackUrl = `${env.storefrontUrl}/order?ref=${encodeURIComponent(order.reference)}`;
   const html = shell(
     s.name,
     `Thank you, ${order.customer.fullName.split(" ")[0]}! Payment received`,
@@ -115,13 +115,13 @@ export async function sendStatusUpdate(order, note) {
   const tracking = order.status === "dispatched" && order.dispatch?.trackingNumber
     ? `<p>Courier: ${esc(order.dispatch.courier)} · Tracking: <b>${esc(order.dispatch.trackingNumber)}</b></p>` : "";
   const html = shell(s.name, `Your order is ${label}`, `<p>Order <b>${esc(order.reference)}</b> is now <b>${label}</b>.</p>${note ? `<p>${esc(note)}</p>` : ""}${tracking}
-<p><a href="${env.appUrl}/order?ref=${encodeURIComponent(order.reference)}">Track your order</a></p>`);
+<p><a href="${env.storefrontUrl}/order?ref=${encodeURIComponent(order.reference)}">Track your order</a></p>`);
   await sendMail({ to: order.customer.email, subject: `Order ${order.reference}: ${label}`, html });
 }
 
 export async function sendPasswordReset(user, token) {
   const s = (await getSettings()).store;
-  const link = `${env.appUrl}/reset-password?token=${token}`;
+  const link = `${env.storefrontUrl}/reset-password?token=${token}`;
   const html = shell(s.name, "Reset your password", `<p>We received a request to reset your password. This link works for 1 hour.</p>
 <p><a href="${link}" style="background:#2145f5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Choose a new password</a></p>
 <p style="color:#5b6577;font-size:13px">If you did not ask for this, you can ignore this email.</p>`);
@@ -135,7 +135,7 @@ export async function sendWelcome(user) {
   await sendMail({
     to: user.email,
     subject: `Welcome to ${s.name}`,
-    html: shell(s.name, `Welcome, ${user.name.split(" ")[0]}`, `<p>Your account is ready. You can track orders, save a wishlist and check out faster.</p><p><a href="${env.appUrl}/shop">Start shopping</a></p>`),
+    html: shell(s.name, `Welcome, ${user.name.split(" ")[0]}`, `<p>Your account is ready. You can track orders, save a wishlist and check out faster.</p><p><a href="${env.storefrontUrl}/shop">Start shopping</a></p>`),
   });
 }
 

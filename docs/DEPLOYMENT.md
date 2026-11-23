@@ -68,6 +68,27 @@ Put Nginx/Caddy/Traefik in front for HTTPS. Volumes keep the database and upload
 4. **Persistent images:** these platforms have ephemeral disks. Use Cloudinary (`CLOUDINARY_*`) or attach a persistent disk and point `UPLOAD_DIR` at it.
 5. Run `npm run seed` once from the platform's shell.
 
+## Option D: Vercel (API with a separately hosted storefront)
+
+The root `index.js` exports the Express app for Vercel Functions and connects to MongoDB on demand. This deployment serves the API only; host the storefront separately. Do not select the Dockerfile builder for this project.
+
+1. Push the changes to GitHub. In Vercel, import this repository and set **Root Directory** to the repository root and **Framework Preset** to **Express**. Leave the Build Command and Output Directory at their defaults.
+2. Add these environment variables to the Vercel project (Production and Preview as needed):
+   - `NODE_ENV=production`
+   - `MONGO_URI` — MongoDB Atlas connection string; allow Vercel network access in Atlas.
+   - `JWT_SECRET` — a new random secret of at least 32 characters.
+   - `APP_URL` — the deployed backend URL. Payment webhook URLs are based on this value.
+   - `STOREFRONT_URL` — the public storefront URL used for payment returns and customer email links.
+   - `ALLOWED_ORIGINS` — comma-separated, exact storefront origin(s), including `https://` and no trailing slash. This also accepts the legacy `FRONTEND_ORIGINS` name.
+   - `ADMIN_EMAIL` and `ADMIN_PASSWORD` — use a strong, new admin password.
+   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` for product image uploads. Vercel's filesystem is not persistent; do not rely on local `uploads/`.
+   - Add payment and SMTP secrets only when those services are configured.
+3. Deploy, then test `https://YOUR-BACKEND.vercel.app/healthz` and `https://YOUR-BACKEND.vercel.app/api/config`.
+4. Configure the storefront to send API requests to the backend and include credentials for session cookies. For reliable cookie login, use a custom domain and keep the storefront and API on the same site, or proxy `/api/*` through the storefront domain; separate `*.vercel.app` domains may be treated as third-party cookies by browsers.
+5. Update Paystack/Flutterwave webhook URLs to `https://YOUR-BACKEND.vercel.app/api/webhooks/paystack` and `/api/webhooks/flutterwave`.
+
+Vercel Functions do not keep the `server/index.js` interval alive, so the expired-order stock sweeper must be run through a scheduled job before relying on order expiry. Uploaded images must use Cloudinary or another persistent object store.
+
 ## After deployment
 
 - Add the **webhook URLs** to Paystack and Flutterwave (see README).

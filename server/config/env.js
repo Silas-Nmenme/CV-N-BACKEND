@@ -17,17 +17,20 @@ const jwtSecret = required("JWT_SECRET", isProd ? undefined : "dev-only-secret-c
 if (isProd && jwtSecret.length < 32) {
   throw new Error("JWT_SECRET must be at least 32 characters in production.");
 }
+const appUrl = (process.env.APP_URL || `http://localhost:${num(process.env.PORT, 5000)}`).replace(/\/+$/, "");
+const allowedOrigins = [process.env.ALLOWED_ORIGINS, process.env.FRONTEND_ORIGINS].filter(Boolean).join(",");
 
 export const env = {
   isProd,
   port: num(process.env.PORT, 5000),
-  appUrl: (process.env.APP_URL || `http://localhost:${num(process.env.PORT, 5000)}`).replace(/\/+$/, ""),
-  mongoUri: required("MONGO_URI", isProd ? undefined : "mongodb://127.0.0.1:27017/cv_gadgets"),
+  appUrl,
+  storefrontUrl: (process.env.STOREFRONT_URL || appUrl).replace(/\/+$/, ""),
+  mongoUri: required("MONGO_URI", isProd ? undefined : "mongodb://127.0.0.1:27017/CV-gadgets"),
   jwtSecret,
   jwtExpiresDays: num(process.env.JWT_EXPIRES_DAYS, 14),
   cookieName: process.env.COOKIE_NAME || "cvg_session",
   trustProxy: process.env.TRUST_PROXY ?? (isProd ? "1" : "0"),
-  extraOrigins: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean),
+  extraOrigins: allowedOrigins.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean),
 
   uploadDir: process.env.UPLOAD_DIR || "uploads",
   cloudinary: {

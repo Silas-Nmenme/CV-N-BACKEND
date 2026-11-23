@@ -24,10 +24,27 @@ import adminRoutes from "./routes/admin/index.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.resolve(__dirname, "../client");
 
-export function createApp() {
+export function createApp({ serveFrontend = true } = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", env.trustProxy === "0" ? false : Number.isNaN(Number(env.trustProxy)) ? env.trustProxy : Number(env.trustProxy));
+
+  app.use((req, res, next) => {
+    const origin = req.get("Origin")?.replace(/\/+$/, "");
+    if (origin && env.extraOrigins.includes(origin)) {
+      res.vary("Origin");
+      res.set("Access-Control-Allow-Origin", origin);
+      res.set("Access-Control-Allow-Credentials", "true");
+      if (req.method === "OPTIONS") {
+        res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+        res.set("Access-Control-Allow-Headers", req.get("Access-Control-Request-Headers") || "Content-Type");
+        return res.sendStatus(204);
+      }
+    } else if (req.method === "OPTIONS") {
+      return res.sendStatus(403);
+    }
+    next();
+  });
 
   app.use(
     helmet({
@@ -76,6 +93,12 @@ export function createApp() {
   app.use("/api", checkoutRoutes);
   app.use(notFound);
 
+  if (!serveFrontend) {
+    app.use((req, res) => res.status(404).json({ success: false, message: "That endpoint does not exist." }));
+    app.use(errorHandler);
+    return app;
+  }
+
   /* ----------------------------- static files ----------------------------- */
   app.use(
     "/uploads",
@@ -114,9 +137,9 @@ export function createApp() {
         const img = p.images?.[0]?.url ? (p.images[0].url.startsWith("http") ? p.images[0].url : env.appUrl + p.images[0].url) : "";
         const ld = {
           "@context": "https://schema.org", "@type": "Product", name: p.name, brand: { "@type": "Brand", name: p.brandName }, image: img || undefined, description: p.description?.slice(0, 300),
-          offers: { "@type": "Offer", priceCurrency: "NGN", price: p.minPrice, availability: p.totalStock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", url: `${env.appUrl}/p/${p.slug}` },
+          offers: { "@type": "Offer", priceCurrency: "NGN", price: p.minPrice, availability: p.totalStock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", url: `${env.storefrontUrl}/p/${p.slug}` },
         };
-        head = `<title>${esc(p.name)} | ${esc(s.store.name)}</title><meta name="description" content="${desc}"><meta property="og:title" content="${esc(p.name)}"><meta property="og:description" content="${desc}">${img ? `<meta property="og:image" content="${esc(img)}">` : ""}<meta property="og:type" content="product"><link rel="canonical" href="${env.appUrl}/p/${esc(p.slug)}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`;
+        head = `<title>${esc(p.name)} | ${esc(s.store.name)}</title><meta name="description" content="${desc}"><meta property="og:title" content="${esc(p.name)}"><meta property="og:description" content="${desc}">${img ? `<meta property="og:image" content="${esc(img)}">` : ""}<meta property="og:type" content="product"><link rel="canonical" href="${env.storefrontUrl}/p/${esc(p.slug)}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`;
       } else {
         res.status(404);
         head = `<title>Product not found | ${esc(s.store.name)}</title><meta name="robots" content="noindex">`;
