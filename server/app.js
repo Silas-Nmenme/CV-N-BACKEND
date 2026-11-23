@@ -94,6 +94,7 @@ export function createApp({ serveFrontend = true } = {}) {
   app.use(notFound);
 
   if (!serveFrontend) {
+    app.get("/", (_req, res) => res.json({ ok: true, service: "CV GADGETS API" }));
     app.use((req, res) => res.status(404).json({ success: false, message: "That endpoint does not exist." }));
     app.use(errorHandler);
     return app;

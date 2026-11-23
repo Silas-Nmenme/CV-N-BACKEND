@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import sharp from "sharp";
 import { bootstrap, client, startGatewayStub } from "./helpers.js";
 
@@ -28,6 +29,18 @@ before(async () => {
 after(async () => ctx.close());
 
 test("configured storefront gets credentialed CORS and preflight access", async () => {
+  const { createApp } = await import("../server/app.js");
+  const apiOnlyServer = http.createServer(createApp({ serveFrontend: false }));
+  await new Promise((resolve) => apiOnlyServer.listen(0, "127.0.0.1", resolve));
+  const apiOnlyUrl = `http://127.0.0.1:${apiOnlyServer.address().port}`;
+  try {
+    const root = await fetch(apiOnlyUrl);
+    assert.equal(root.status, 200);
+    assert.deepEqual(await root.json(), { ok: true, service: "CV GADGETS API" });
+  } finally {
+    await new Promise((resolve) => apiOnlyServer.close(resolve));
+  }
+
   const health = await fetch(`${ctx.base}/healthz`);
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { ok: true });
