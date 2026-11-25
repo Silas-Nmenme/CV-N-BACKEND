@@ -105,6 +105,12 @@ export function createApp({ serveFrontend = true } = {}) {
   app.get("/p/:slug", async (req, res, next) => {
     try {
       productTemplate ||= await fs.readFile(path.join(clientDir, "product.html"), "utf8");
+      if (req.query.preview) {
+        // Staff preview of an unpublished product: serve the bare shell (no product data, never indexed or cached).
+        // The page then asks /api/products/:slug?preview=1, which only returns the product to signed-in staff.
+        res.set("Cache-Control", "private, no-store");
+        return res.type("html").send(productTemplate.replace("<!--SEO-->", `<title>Product preview</title><meta name="robots" content="noindex, nofollow">`));
+      }
       const [p, s] = await Promise.all([Product.findOne({ slug: String(req.params.slug).toLowerCase(), active: true }, "name brandName description images minPrice totalStock slug").lean(), getSettings()]);
       const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       let head = "";

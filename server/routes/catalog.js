@@ -6,7 +6,7 @@ import { Brand } from "../models/Brand.js";
 import { Product } from "../models/Product.js";
 import { Review } from "../models/Review.js";
 import { Order } from "../models/Order.js";
-import { optionalAuth, requireAuth } from "../middleware/auth.js";
+import { optionalAuth, requireAuth, can } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError, escapeRegex, paginate } from "../utils/helpers.js";
 import { subtreeIds, effectiveTemplate } from "../services/categories.js";
@@ -242,9 +242,14 @@ function specGroups(product, template) {
 
 router.get(
   "/products/:slug",
+  optionalAuth,
   asyncHandler(async (req, res) => {
-    const p = await Product.findOne({ slug: String(req.params.slug).toLowerCase(), active: true }).lean();
+    // Staff with the "products" permission can open a hidden (unpublished) product with ?preview=1 to check it
+    // before publishing. Everyone else only ever sees active products.
+    const preview = req.query.preview === "1" && can(req.user, "products");
+    const p = await Product.findOne({ slug: String(req.params.slug).toLowerCase(), ...(preview ? {} : { active: true }) }).lean();
     if (!p) throw new HttpError(404, "We couldn't find that product.");
+    if (preview) res.set({ "Cache-Control": "private, no-store", Vary: "Cookie" });
     const template = await effectiveTemplate(p.category);
     const [crumbs, brand, dist] = await Promise.all([
       breadcrumb(p.category),
@@ -266,6 +271,7 @@ router.get(
         variants, attrDefs: template.variantAttrs, specGroups: specGroups(p, template), warranty: p.warranty, network: p.network,
         category: crumbs.at(-1) || null, breadcrumb: crumbs, minPrice: p.minPrice, maxPrice: p.maxPrice, totalStock: p.totalStock,
         ratingAvg: p.ratingAvg, ratingCount: p.ratingCount, distribution, featured: p.featured, newArrival: p.newArrival, bestseller: p.bestseller, onOffer: p.onOffer,
+        ...(preview ? { preview: true, active: p.active } : {}),
       },
     });
   })

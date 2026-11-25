@@ -10,11 +10,19 @@ import { requirePermission } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { asyncHandler, HttpError, escapeRegex, paginate, slugify } from "../../utils/helpers.js";
 import { subtreeIds, effectiveTemplate } from "../../services/categories.js";
-import { saveImage } from "../../services/images.js";
+import { saveImage, deleteImage } from "../../services/images.js";
+import { User } from "../../models/User.js";
+import { Review } from "../../models/Review.js";
+import { Order } from "../../models/Order.js";
 import { uniqueSlug } from "./catalog.js";
 
 const router = Router();
 const guard = requirePermission("products");
+
+// Image links must be files we uploaded (/uploads/...) or https links (Cloudinary). Anything else (javascript:, data:, etc.) is refused.
+const isSafeImageUrl = (u) => /^https?:\/\//i.test(u) || (u.startsWith("/uploads/") && !u.includes(".."));
+const imageUrl = z.string().trim().min(1, "Image link is missing.").max(600).refine(isSafeImageUrl, "Image links must be uploaded images or https links.");
+const optionalImageUrl = z.string().trim().max(600).refine((u) => u === "" || isSafeImageUrl(u), "Image links must be uploaded images or https links.");
 
 const variantSchema = z
   .object({
@@ -24,7 +32,7 @@ const variantSchema = z
     comparePrice: z.number().min(0).max(1_000_000_000).nullable().optional(),
     stock: z.number().int("Stock must be a whole number.").min(0).max(100000),
     batteryHealth: z.number().min(0).max(100).nullable().optional(),
-    image: z.string().max(500).optional(),
+    image: optionalImageUrl.optional(),
     active: z.boolean().default(true),
   })
   .refine((v) => v.comparePrice == null || v.comparePrice === 0 || v.comparePrice > v.price, { message: "The original (compare) price must be higher than the selling price.", path: ["comparePrice"] });
@@ -42,7 +50,7 @@ const productSchema = z.object({
   warranty: z.string().trim().max(400).default(""),
   network: z.string().trim().max(120).default(""),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
-  images: z.array(z.object({ url: z.string().min(1).max(600), thumb: z.string().max(600).default(""), alt: z.string().max(160).default(""), publicId: z.string().max(300).default("") })).max(12).default([]),
+  images: z.array(z.object({ url: imageUrl, thumb: optionalImageUrl.default(""), alt: z.string().max(160).default(""), publicId: z.string().max(300).default("") })).max(12).default([]),
   variants: z.array(variantSchema).min(1, "Add at least one variant (price and stock).").max(60),
   featured: z.boolean().default(false),
   bestseller: z.boolean().default(false),
@@ -68,8 +76,27 @@ async function applyBody(doc, body) {
   });
   doc.markModified("specs");
   doc.lowStockThreshold = body.lowStockThreshold ?? (await getSettings()).shop.lowStockThreshold;
-  doc.slug = await uniqueSlug(Product, body.slug || body.name + (body.model && !body.name.includes(body.model) ? " " + body.model : ""), doc._id);
+  // Keep a product's URL stable when it is edited: shared links, bookmarks and search results keep working after a rename.
+  // The slug is only (re)generated for a new product, or when an admin explicitly types a new slug.
+  if (doc.isNew || (body.slug && slugify(body.slug) !== doc.slug)) {
+    doc.slug = await uniqueSlug(Product, body.slug || body.name + (body.model && !body.name.includes(body.model) ? " " + body.model : ""), doc._id);
+  }
 }
+
+/**
+ * Remove uploaded files that a product no longer uses (after an edit or delete) so storage does not fill with orphans.
+ * Never removes a file another product still references. Best effort: a failure here never fails the request.
+ */
+async function pruneImages(before = [], after = []) {
+  const keep = new Set(after.map((i) => i.url));
+  for (const img of before) {
+    if (!img?.url || keep.has(img.url)) continue;
+    if (await Product.exists({ "images.url": img.url })) continue;
+    await deleteImage(img);
+  }
+}
+
+const OPEN_ORDER_STATUSES = ["pending_payment", "confirmed", "processing", "dispatched"];
 
 /* list */
 router.get(
@@ -167,8 +194,10 @@ router.put(
     if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(400, "Invalid id.");
     const doc = await Product.findById(req.params.id);
     if (!doc) throw new HttpError(404, "Product not found.");
+    const before = (doc.images || []).map((i) => ({ url: i.url, thumb: i.thumb, publicId: i.publicId }));
     await applyBody(doc, req.body);
     await doc.save();
+    await pruneImages(before, req.body.images);
     res.json({ success: true, item: doc });
   })
 );
@@ -207,8 +236,21 @@ router.delete(
   guard,
   asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(400, "Invalid id.");
-    const r = await Product.deleteOne({ _id: req.params.id });
-    if (!r.deletedCount) throw new HttpError(404, "Product not found.");
+    const doc = await Product.findById(req.params.id);
+    if (!doc) throw new HttpError(404, "Product not found.");
+    // Finished orders keep their own copy of the item (name, price, image), so history is safe. Open orders still need the product.
+    const open = await Order.countDocuments({ "items.product": doc._id, status: { $in: OPEN_ORDER_STATUSES } });
+    if (open) {
+      throw new HttpError(409, `“${doc.name}” is in ${open} open order${open === 1 ? "" : "s"} (awaiting payment, processing or on the way). Hide it instead by unticking “Visible”, and delete it once those orders are finished.`);
+    }
+    await Product.deleteOne({ _id: doc._id });
+    // Tidy everything that pointed at it so nothing is left dangling.
+    await Promise.all([
+      User.updateMany({ wishlist: doc._id }, { $pull: { wishlist: doc._id } }),
+      User.updateMany({ "cart.productId": doc._id }, { $pull: { cart: { productId: doc._id } } }),
+      Review.deleteMany({ product: doc._id }),
+    ]);
+    await pruneImages(doc.images || [], []);
     res.json({ success: true });
   })
 );
