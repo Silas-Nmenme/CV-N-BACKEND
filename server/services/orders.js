@@ -210,6 +210,27 @@ export async function expireStaleOrders() {
   return n;
 }
 
+let lastLazySweep = 0;
+/**
+ * Hosting plans that only allow a daily cron (Vercel Hobby) cannot sweep every few minutes, so expired unpaid orders
+ * are also released lazily: when shoppers browse, get a quote or place an order, at most once a minute per server instance.
+ * Never throws and never holds a request for more than ~1.5s.
+ */
+export async function sweepExpiredOrdersIfDue() {
+  const gap = Number(process.env.SWEEP_MIN_GAP_MS ?? 60_000);
+  const now = Date.now();
+  if (now - lastLazySweep < gap) return;
+  lastLazySweep = now;
+  let timer;
+  try {
+    await Promise.race([expireStaleOrders(), new Promise((resolve) => { timer = setTimeout(resolve, 1500); timer.unref?.(); })]);
+  } catch (e) {
+    console.error("[lazy-sweep]", e.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function publicOrder(o, { includeToken = false } = {}) {
   const obj = o.toObject ? o.toObject() : o;
   const out = {

@@ -1,5 +1,6 @@
 /**
- * READ-ONLY product catalogue audit.  Usage:  npm run audit:product
+ * READ-ONLY product catalogue audit.  Usage:  npm run audit:products
+ *
  * Connects with MONGO_URI from your .env, reads products, and prints problems that make storefront cards or
  * product pages look broken (missing images, images that only exist on a developer machine, no sellable variants,
  * dangling category/brand references, duplicate slugs, zero prices). It never writes, updates or deletes anything.

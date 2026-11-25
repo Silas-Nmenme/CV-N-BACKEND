@@ -12,7 +12,7 @@ import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { uploadRoot } from "./services/images.js";
 import { Product } from "./models/Product.js";
 import { getSettings } from "./models/Misc.js";
-import { expireStaleOrders } from "./services/orders.js";
+import { expireStaleOrders, sweepExpiredOrdersIfDue } from "./services/orders.js";
 
 import authRoutes from "./routes/auth.js";
 import accountRoutes from "./routes/account.js";
@@ -85,6 +85,8 @@ export function createApp({ serveFrontend = true } = {}) {
 
   app.use("/api", apiLimiter, originCheck, noSqlGuard);
   app.use("/api/auth", authRoutes);
+  // Release stock held by expired unpaid orders before stock is shown, quoted or reserved (see sweepExpiredOrdersIfDue).
+  app.use(["/api/products", "/api/cart", "/api/orders"], (_req, _res, next) => { sweepExpiredOrdersIfDue().then(() => next(), () => next()); });
   app.use("/api/account", accountRoutes);
   app.use("/api/payments", paymentRoutes);
   app.use("/api/webhooks", webhooks);
