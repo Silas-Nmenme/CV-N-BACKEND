@@ -1,8 +1,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { bootstrap, client, startGatewayStub, paystackSig } from "./helpers.js";
+import { bootstrap, client, signedInClient, startGatewayStub, paystackSig } from "./helpers.js";
 
-let ctx, gw, api;
+let ctx, gw, api, buyer;
 const item = async (sku, quantity = 1) => {
   const p = await ctx.models.Product.findOne({ "variants.sku": sku });
   assert.ok(p, `demo product with sku ${sku} should exist`);
@@ -22,6 +22,7 @@ before(async () => {
   gw = await startGatewayStub();
   ctx = await bootstrap({ dbName: "cvg_test_commerce", gateway: gw });
   api = client(ctx.base);
+  buyer = await signedInClient(ctx.base); // ordering needs an account; `api` stays anonymous for the guest/token checks
 });
 after(async () => ctx.close());
 
@@ -128,15 +129,15 @@ test("delivery options come from admin-managed zones, with free-over threshold",
 /* ------------------------------ orders & stock ------------------------------ */
 test("order creation validates input and reserves stock", async () => {
   const it = await item("IP12-64-BK-U", 2);
-  let r = await api.post("/api/orders", orderBody([it], { customer: { fullName: "A", email: "bad", phone: "123" } }));
+  let r = await buyer.post("/api/orders", orderBody([it], { customer: { fullName: "A", email: "bad", phone: "123" } }));
   assert.equal(r.status, 400);
-  r = await api.post("/api/orders", orderBody([it], { paymentMethod: "bank_transfer" }));
+  r = await buyer.post("/api/orders", orderBody([it], { paymentMethod: "bank_transfer" }));
   assert.equal(r.status, 400, "bank transfer is off until the admin enables it");
-  r = await api.post("/api/orders", orderBody([it], { shipping: { state: "Lagos", city: "Ikeja", address: "12 Allen Avenue", method: "teleport" } }));
+  r = await buyer.post("/api/orders", orderBody([it], { shipping: { state: "Lagos", city: "Ikeja", address: "12 Allen Avenue", method: "teleport" } }));
   assert.equal(r.status, 400);
 
   const before = await stockOf("IP12-64-BK-U");
-  r = await api.post("/api/orders", orderBody([it]));
+  r = await buyer.post("/api/orders", orderBody([it]));
   assert.equal(r.status, 201);
   assert.match(r.data.order.reference, /^CVG-\d{6}-[A-F0-9]{6}$/);
   assert.equal(r.data.order.total, 290000 * 2 + 3500);
@@ -149,7 +150,7 @@ test("order creation validates input and reserves stock", async () => {
 
 test("two simultaneous buyers cannot oversell the last units", async () => {
   const it = await item("IP13-256-RD-U", 2); // stock is 2
-  const results = await Promise.all([api.post("/api/orders", orderBody([it])), api.post("/api/orders", orderBody([it])), api.post("/api/orders", orderBody([it]))]);
+  const results = await Promise.all([buyer.post("/api/orders", orderBody([it])), buyer.post("/api/orders", orderBody([it])), buyer.post("/api/orders", orderBody([it]))]);
   const ok = results.filter((r) => r.status === 201).length;
   assert.equal(ok, 1, `exactly one order wins (got ${results.map((r) => r.status)})`);
   assert.equal(await stockOf("IP13-256-RD-U"), 0);
@@ -157,7 +158,7 @@ test("two simultaneous buyers cannot oversell the last units", async () => {
 
 test("guests can only open their order with the access token", async () => {
   const it = await item("IP11-64-BK-U", 1);
-  const { data } = await api.post("/api/orders", orderBody([it]));
+  const { data } = await buyer.post("/api/orders", orderBody([it]));
   const ref = data.order.reference;
   assert.equal((await api.get(`/api/orders/${ref}`)).status, 404);
   assert.equal((await api.get(`/api/orders/${ref}?t=wrong`)).status, 404);
@@ -170,7 +171,7 @@ test("guests can only open their order with the access token", async () => {
 /* ------------------------------ Paystack ------------------------------ */
 async function placeOrder(sku, qty = 1, extra = {}) {
   const it = await item(sku, qty);
-  const r = await api.post("/api/orders", orderBody([it], extra));
+  const r = await buyer.post("/api/orders", orderBody([it], extra));
   assert.equal(r.status, 201, JSON.stringify(r.data));
   return r.data;
 }
@@ -289,7 +290,7 @@ test("unpaid orders expire and give stock and coupon use back", async () => {
   const it = await item("IP11-64-BK-U", 3);
   const stockBefore = await stockOf("IP11-64-BK-U");
   const used = (await ctx.models.Coupon.findOne({ code: "WELCOME5" })).usedCount;
-  const r = await api.post("/api/orders", orderBody([it], { couponCode: "WELCOME5" }));
+  const r = await buyer.post("/api/orders", orderBody([it], { couponCode: "WELCOME5" }));
   assert.equal(r.status, 201);
   assert.equal(await stockOf("IP11-64-BK-U"), stockBefore - 3);
   assert.equal((await ctx.models.Coupon.findOne({ code: "WELCOME5" })).usedCount, used + 1);

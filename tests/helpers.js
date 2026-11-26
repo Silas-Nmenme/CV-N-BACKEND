@@ -119,6 +119,14 @@ export async function bootstrap({ dbName, gateway } = {}) {
 }
 
 /** Tiny HTTP client with a cookie jar. */
+/** A signed-in customer. Placing an order requires an account, so tests that check out use one of these. */
+export async function signedInClient(base, email = "checkout.buyer@example.com", name = "Checkout Buyer") {
+  const c = client(base);
+  const r = await c.post("/api/auth/register", { name, email, password: "Passw0rd99" });
+  if (r.status !== 201) throw new Error(`could not create test buyer ${email}: ${r.status} ${JSON.stringify(r.data)}`);
+  return c;
+}
+
 export function client(base) {
   let cookie = "";
   async function call(method, url, body, { headers = {}, raw } = {}) {

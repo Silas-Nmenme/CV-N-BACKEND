@@ -9,7 +9,7 @@ Customer storefront, admin dashboard, REST API and database in one Node.js app. 
 | Area | Highlights |
 |---|---|
 | Storefront | Home with rotating hero, category tiles and product rails; catalogue with dynamic filters (brand, price, storage, RAM, processor, condition, availability) and sorting; product pages with linked variant pickers; cart with coupons and delivery estimate; checkout; order tracking; printable receipts; wishlist; reviews; WhatsApp enquiry buttons |
-| Accounts | Register, sign in/out, forgot and reset password, profile, saved addresses, order history, change password, guest checkout |
+| Accounts | Register, sign in/out, forgot and reset password, profile, saved addresses, order history, change password; checking out requires an account (guests can browse, build a cart and open orders they already have a link/token for) |
 | Payments | Paystack and Flutterwave (initialise, redirect, **server-side verification**, signed webhooks), bank transfer with manual confirmation, full payment history, receipts |
 | Admin (`/admin`) | Dashboard (revenue, orders, customers, low stock, charts), products with variants and images, categories with editable spec templates, brands, orders, customers, coupons, reviews, delivery zones and fees, homepage banners, testimonials, editable policy pages, enquiries, subscribers, sales reports (CSV), staff roles, store settings |
 | Nigeria | ₦ pricing, 36 states + FCT, Nigerian phone validation (`0803…` / `+234803…`), delivery by zone, WhatsApp links, local payment gateways |

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Order } from "../models/Order.js";
 import { getSettings } from "../models/Misc.js";
-import { optionalAuth, can } from "../middleware/auth.js";
+import { optionalAuth, requireAuth, can } from "../middleware/auth.js";
 import { strictLimiter } from "../middleware/rateLimit.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError, normalizeNgPhone, safeEqual } from "../utils/helpers.js";
@@ -78,9 +78,11 @@ const checkoutBody = z.object({
   couponCode: z.string().trim().max(40).optional(),
 });
 
+// Placing an order requires a signed-in account (guests get 401 and the storefront sends them to sign in, then back to checkout).
+// Looking up an existing order stays open to guests with the per-order token (see loadOrderForRequest below).
 router.post(
   "/orders",
-  optionalAuth,
+  requireAuth,
   strictLimiter,
   validate({ body: checkoutBody }),
   asyncHandler(async (req, res) => {

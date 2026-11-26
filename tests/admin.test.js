@@ -2,9 +2,9 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import sharp from "sharp";
-import { bootstrap, client, startGatewayStub } from "./helpers.js";
+import { bootstrap, client, signedInClient, startGatewayStub } from "./helpers.js";
 
-let ctx, gw, admin, shop;
+let ctx, gw, admin, shop, buyer;
 const item = async (sku, quantity = 1) => {
   const p = await ctx.models.Product.findOne({ "variants.sku": sku });
   return { productId: String(p._id), sku, quantity };
@@ -22,6 +22,7 @@ before(async () => {
   ctx = await bootstrap({ dbName: "cvg_test_admin", gateway: gw });
   admin = client(ctx.base);
   shop = client(ctx.base);
+  buyer = await signedInClient(ctx.base); // ordering needs an account; `shop` stays anonymous for browsing/quotes
   const r = await admin.post("/api/auth/login", { email: "owner@test.ng", password: "Owner12345" });
   assert.equal(r.status, 200);
   assert.equal(r.data.user.isStaff, true);
@@ -114,7 +115,7 @@ test("settings: bank transfer needs details, WhatsApp is normalised, secrets are
 
 test("bank transfer: customer reports payment, admin must confirm the exact amount", async () => {
   const it = await item("IP13-128-MD-U", 1);
-  const placed = await shop.post("/api/orders", orderBody([it]));
+  const placed = await buyer.post("/api/orders", orderBody([it]));
   assert.equal(placed.status, 201, JSON.stringify(placed.data));
   assert.equal(placed.data.bank.accountNumber, "0123456789");
   const { reference, total } = placed.data.order;
@@ -153,7 +154,7 @@ test("bank transfer: customer reports payment, admin must confirm the exact amou
 
 test("online payments cannot be confirmed by hand (only re-verified with the gateway)", async () => {
   const it = await item("IP13-128-MD-U", 1);
-  const placed = await shop.post("/api/orders", orderBody([it], { paymentMethod: "paystack" }));
+  const placed = await buyer.post("/api/orders", orderBody([it], { paymentMethod: "paystack" }));
   const r = await admin.post(`/api/admin/orders/${placed.data.order.reference}/confirm-payment`, { amountReceived: placed.data.order.total });
   assert.equal(r.status, 409);
   const init = await shop.post("/api/payments/initialize", { orderReference: placed.data.order.reference, accessToken: placed.data.accessToken, provider: "paystack" });
@@ -166,7 +167,7 @@ test("cancelling a paid order restores stock and flags the refund", async () => 
   const sku = "IP13-128-MD-U";
   const before = (await ctx.models.Product.findOne({ "variants.sku": sku })).variants.find((v) => v.sku === sku).stock;
   const it = await item(sku, 2);
-  const placed = await shop.post("/api/orders", orderBody([it]));
+  const placed = await buyer.post("/api/orders", orderBody([it]));
   const { reference, total } = placed.data.order;
   await admin.post(`/api/admin/orders/${reference}/confirm-payment`, { amountReceived: total });
   const r = await admin.patch(`/api/admin/orders/${reference}/status`, { status: "cancelled", note: "Customer changed mind", refund: true });
@@ -306,12 +307,12 @@ test("coupons: validation, limits, minimum spend and category scoping", async ()
   assert.match(q.data.couponError, /does not apply/);
   q = await shop.post("/api/cart/quote", { items: [phone, charger], couponCode: "CHARGE10" });
   assert.equal(q.data.discount, 1700, "10% of the charger only");
-  const placed = await shop.post("/api/orders", orderBody([charger], { couponCode: "CHARGE10", paymentMethod: "paystack" }));
+  const placed = await buyer.post("/api/orders", orderBody([charger], { couponCode: "CHARGE10", paymentMethod: "paystack" }));
   assert.equal(placed.status, 201);
   assert.equal(placed.data.order.discount, 1700);
   q = await shop.post("/api/cart/quote", { items: [charger], couponCode: "CHARGE10" });
   assert.match(q.data.couponError, /usage limit/);
-  assert.equal((await shop.post("/api/orders", orderBody([charger], { couponCode: "CHARGE10", paymentMethod: "paystack" }))).status, 400, "strict at checkout");
+  assert.equal((await buyer.post("/api/orders", orderBody([charger], { couponCode: "CHARGE10", paymentMethod: "paystack" }))).status, 400, "strict at checkout");
 });
 
 /* ------------------------------ staff & permissions ------------------------------ */

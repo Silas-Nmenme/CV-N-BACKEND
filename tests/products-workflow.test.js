@@ -174,7 +174,7 @@ test("deleting a product is safe: blocked while in an open order, and it cleans 
   const before = await ctx.models.User.findOne({ email: "ada@example.com" });
   assert.equal(before.wishlist.map(String).includes(String(a._id)), true, "wishlisted before the delete");
   assert.equal(before.cart.some((i) => String(i.productId) === String(a._id)), true, "in the saved cart before the delete");
-  const placed = await shop.post("/api/orders", orderBody(a._id, "DM-1", 2));
+  const placed = await customer.post("/api/orders", orderBody(a._id, "DM-1", 2));
   assert.equal(placed.status, 201, JSON.stringify(placed.data));
 
   let r = await admin.del(`/api/admin/products/${a._id}`);
