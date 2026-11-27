@@ -41,6 +41,7 @@ export function errorHandler(err, req, res, _next) {
 
   const body = { success: false, message };
   if (fields) body.fields = fields;
+  if (err.expose && err.extra) Object.assign(body, err.extra);
   if (!env.isProd && status >= 500) body.debug = String(err.stack || err).split("\n").slice(0, 4);
   res.status(status).json(body);
 }

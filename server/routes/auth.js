@@ -9,6 +9,7 @@ import { validate } from "../middleware/validate.js";
 import { asyncHandler, HttpError, normalizeNgPhone, randomToken, sha256 } from "../utils/helpers.js";
 import { PERMISSIONS, STAFF_ROLES } from "../utils/constants.js";
 import { sendPasswordReset, sendWelcome } from "../services/mailer.js";
+import { emailVerificationEnabled, issueEmailOtp, verifyEmailOtp, maskEmail, OTP_TTL_MINUTES, RESEND_COOLDOWN_SECONDS } from "../services/emailVerification.js";
 
 const router = Router();
 
@@ -46,6 +47,9 @@ export function sessionPayload(user) {
   };
 }
 
+const subscribeSignup = (mail) =>
+  Subscriber.updateOne({ email: mail }, { $setOnInsert: { email: mail, unsubscribeToken: randomToken(16), source: "signup" }, $set: { active: true } }, { upsert: true });
+
 router.post(
   "/register",
   authLimiter,
@@ -60,14 +64,84 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const { name, email: mail, phone, password, newsletter } = req.body;
-    if (await User.exists({ email: mail })) throw new HttpError(409, "An account with this email already exists. Try signing in.");
-    const user = await User.create({ name, email: mail, phone, passwordHash: await bcrypt.hash(password, 12), newsletter: Boolean(newsletter) });
-    if (newsletter) {
-      await Subscriber.updateOne({ email: mail }, { $setOnInsert: { email: mail, unsubscribeToken: randomToken(16), source: "signup" }, $set: { active: true } }, { upsert: true });
+    const verify = emailVerificationEnabled();
+    const taken = "An account with this email already exists. Try signing in.";
+    const existing = await User.findOne({ email: mail });
+    if (existing && existing.emailVerified !== false) throw new HttpError(409, taken);
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    let user;
+    if (existing) {
+      // An earlier signup with this email never finished verifying. That account has never had a session, and only the owner of the
+      // inbox can finish verifying it, so this signup takes it over instead of leaving the address blocked forever.
+      Object.assign(existing, { name, phone, passwordHash, newsletter: Boolean(newsletter), emailVerified: !verify, sessionVersion: (existing.sessionVersion || 0) + 1 });
+      user = await existing.save();
+    } else {
+      try {
+        user = await User.create({ name, email: mail, phone, passwordHash, newsletter: Boolean(newsletter), emailVerified: !verify });
+      } catch (e) {
+        if (e?.code === 11000) throw new HttpError(409, taken); // two signups for the same email at the same moment
+        throw e;
+      }
     }
+
+    if (verify) {
+      // No session yet: the account is unusable until the emailed code is entered. A failed email never fails signup.
+      const otp = await issueEmailOtp(user, { force: !existing });
+      return res.status(201).json({
+        success: true,
+        verificationRequired: true,
+        email: mail,
+        emailSent: otp.sent,
+        reason: otp.sent ? undefined : otp.reason,
+        retryAfter: otp.sent ? RESEND_COOLDOWN_SECONDS : otp.retryAfter || 0,
+        expiresInMinutes: OTP_TTL_MINUTES,
+      });
+    }
+
+    if (newsletter) await subscribeSignup(mail);
     issueSession(res, user);
     sendWelcome(user).catch(() => {});
     res.status(201).json({ success: true, user: sessionPayload(user) });
+  })
+);
+
+router.post(
+  "/verify-email",
+  authLimiter,
+  validate({ body: z.object({ email, code: z.string({ required_error: "Enter the 6-digit code from your email." }).trim().regex(/^\d{6}$/, "Enter the 6-digit code from your email.") }) }),
+  asyncHandler(async (req, res) => {
+    const user = await verifyEmailOtp(req.body.email, req.body.code);
+    if (user.status !== "active") throw new HttpError(403, "This account has been suspended. Please contact support.");
+    if (user.newsletter) await subscribeSignup(user.email).catch(() => {}); // only subscribe addresses that proved they own the inbox
+    user.lastLoginAt = new Date();
+    await user.save();
+    issueSession(res, user);
+    sendWelcome(user).catch(() => {});
+    res.json({ success: true, user: sessionPayload(user) });
+  })
+);
+
+router.post(
+  "/resend-otp",
+  authLimiter,
+  validate({ body: z.object({ email }) }),
+  asyncHandler(async (req, res) => {
+    const generic = { success: true, message: "If that email is waiting to be verified, we have sent a new code." };
+    if (!emailVerificationEnabled()) return res.json(generic);
+    const user = await User.findOne({ email: req.body.email });
+    if (!user || user.emailVerified !== false || user.status !== "active") return res.json(generic); // nothing to verify; reveal nothing
+    const otp = await issueEmailOtp(user);
+    if (otp.reason === "cooldown") {
+      throw new HttpError(429, `Please wait ${otp.retryAfter} seconds before asking for another code.`, undefined, { code: "OTP_COOLDOWN", retryAfter: otp.retryAfter });
+    }
+    if (otp.reason === "limit") {
+      throw new HttpError(429, "You have asked for too many codes. Please try again later.", undefined, { code: "OTP_LIMIT", retryAfter: otp.retryAfter });
+    }
+    if (!otp.sent) {
+      throw new HttpError(503, "We couldn't send the email just now. Please try again in a moment.", undefined, { code: "EMAIL_SEND_FAILED", retryAfter: 0 });
+    }
+    res.json({ ...generic, resendAfter: RESEND_COOLDOWN_SECONDS });
   })
 );
 
@@ -96,6 +170,24 @@ router.post(
       throw generic;
     }
     if (user.status !== "active") throw new HttpError(403, "This account has been suspended. Please contact support.");
+    if (user.emailVerified === false) {
+      if (!emailVerificationEnabled()) {
+        user.emailVerified = true; // verification has been switched off: never leave someone stranded behind it
+      } else {
+        // Right password, email not yet verified: no session. Send a fresh code (cooldown applies) and tell the page to show the code screen.
+        user.failedLogins = 0;
+        user.lockUntil = undefined;
+        await user.save();
+        const otp = await issueEmailOtp(user);
+        throw new HttpError(403, "Please verify your email to continue.", undefined, {
+          code: "EMAIL_NOT_VERIFIED",
+          email: user.email,
+          emailSent: otp.sent,
+          reason: otp.sent ? undefined : otp.reason,
+          retryAfter: otp.sent ? RESEND_COOLDOWN_SECONDS : otp.retryAfter || 0,
+        });
+      }
+    }
     user.failedLogins = 0;
     user.lockUntil = undefined;
     user.lastLoginAt = new Date();
@@ -142,6 +234,13 @@ router.post(
     user.passwordHash = await bcrypt.hash(req.body.password, 12);
     user.resetTokenHash = undefined;
     user.resetTokenExpires = undefined;
+    if (user.emailVerified === false) {
+      // The reset link only reaches the owner of the inbox, which is exactly what verification proves.
+      user.emailVerified = true;
+      user.emailVerifiedAt = new Date();
+      user.emailOtpHash = undefined;
+      user.emailOtpExpires = undefined;
+    }
     user.sessionVersion = (user.sessionVersion || 0) + 1; // signs out every other device
     await user.save();
     issueSession(res, user);

@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import { NG_PHONE_REGEX } from "./constants.js";
 
 export class HttpError extends Error {
-  constructor(status, message, details) {
+  constructor(status, message, details, extra) {
     super(message);
     this.status = status;
     this.details = details;
+    this.extra = extra; // merged into the JSON error body, e.g. { code: "EMAIL_NOT_VERIFIED" }
     this.expose = true;
   }
 }

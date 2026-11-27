@@ -12,6 +12,10 @@ function getTransport() {
       port: env.smtp.port,
       secure: env.smtp.secure,
       auth: env.smtp.user ? { user: env.smtp.user, pass: env.smtp.pass } : undefined,
+      // Never let a slow or unreachable mail server hang a request (nodemailer's defaults are 2 minutes).
+      connectionTimeout: env.mailTimeoutMs,
+      greetingTimeout: env.mailTimeoutMs,
+      socketTimeout: env.mailTimeoutMs + 2000,
     });
   }
   return transporter;
@@ -31,7 +35,7 @@ function shell(storeName, title, bodyHtml) {
 </table></td></tr></table></body></html>`;
 }
 
-export async function sendMail({ to, subject, html, text }) {
+export async function sendMail({ to, subject, html, text, timeoutMs }) {
   if (!to) return false;
   const transport = getTransport();
   if (!transport) {
@@ -45,7 +49,15 @@ export async function sendMail({ to, subject, html, text }) {
     return false;
   }
   try {
-    await transport.sendMail({ from: env.smtp.from, to, subject, html, text });
+    const job = transport.sendMail({ from: env.smtp.from, to, subject, html, text });
+    if (timeoutMs) {
+      // Callers that make a person wait (verification codes) stop waiting after timeoutMs instead of hanging.
+      job.catch(() => {}); // a late failure after we stopped waiting must not become an unhandled rejection
+      let timer;
+      await Promise.race([job, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs); })]).finally(() => clearTimeout(timer));
+    } else {
+      await job;
+    }
     return true;
   } catch (err) {
     console.error("[mail] send failed:", err.message);
@@ -128,6 +140,23 @@ export async function sendPasswordReset(user, token) {
   const ok = await sendMail({ to: user.email, subject: "Reset your password", html });
   if (!env.isProd && !ok) console.log(`[mail:dev] Password reset link for ${user.email}: ${link}`);
   return link;
+}
+
+export async function sendEmailOtp(user, code, ttlMinutes = 10) {
+  const s = (await getSettings()).store;
+  const first = esc((user.name || "").split(" ")[0] || "there");
+  const html = shell(
+    s.name,
+    "Verify your email",
+    `<p>Hi ${first}, use this code to finish creating your account:</p>
+<p style="font-size:34px;letter-spacing:8px;font-weight:700;margin:18px 0;text-align:center;background:#f3f5f8;border-radius:10px;padding:14px 0">${esc(code)}</p>
+<p>It expires in ${ttlMinutes} minutes. Never share this code with anyone.</p>
+<p style="color:#5b6577;font-size:13px">If you did not create an account, you can safely ignore this email.</p>`
+  );
+  const text = `Your ${s.name} verification code is ${code}. It expires in ${ttlMinutes} minutes. If you did not create an account, ignore this email.`;
+  const ok = await sendMail({ to: user.email, subject: `${code} is your ${s.name} verification code`, html, text, timeoutMs: env.mailTimeoutMs });
+  if (!ok && !env.isProd && !env.smtp.host) console.log(`[mail:dev] Verification code for ${user.email}: ${code}`);
+  return ok;
 }
 
 export async function sendWelcome(user) {

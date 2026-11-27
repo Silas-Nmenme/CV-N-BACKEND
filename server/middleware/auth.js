@@ -31,7 +31,7 @@ async function loadUser(req) {
     return null;
   }
   const user = await User.findById(decoded.sub);
-  if (!user || user.status !== "active" || (user.sessionVersion || 0) !== (decoded.sv || 0)) return null;
+  if (!user || user.status !== "active" || user.emailVerified === false || (user.sessionVersion || 0) !== (decoded.sv || 0)) return null;
   return user;
 }
 

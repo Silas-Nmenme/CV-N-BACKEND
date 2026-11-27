@@ -41,6 +41,16 @@ const userSchema = new mongoose.Schema(
     lockUntil: { type: Date, select: false },
     lastLoginAt: Date,
     newsletter: { type: Boolean, default: false },
+    // Email verification. Default is TRUE so every existing account (which has no such field) and every staff-created account counts as
+    // verified; signup sets it to false explicitly while it waits for the emailed code.
+    emailVerified: { type: Boolean, default: true },
+    emailVerifiedAt: Date,
+    emailOtpHash: { type: String, select: false },
+    emailOtpExpires: { type: Date, select: false },
+    emailOtpAttempts: { type: Number, default: 0, select: false },
+    emailOtpSentAt: { type: Date, select: false },
+    emailOtpSendCount: { type: Number, default: 0, select: false },
+    emailOtpWindowStart: { type: Date, select: false },
   },
   { timestamps: true }
 );
@@ -56,6 +66,7 @@ userSchema.methods.toSafeJSON = function () {
     addresses: this.addresses,
     createdAt: this.createdAt,
     lastLoginAt: this.lastLoginAt,
+    emailVerified: this.emailVerified !== false,
   };
 };
 

@@ -43,6 +43,11 @@ export const env = {
     apiSecret: process.env.CLOUDINARY_API_SECRET || "",
   },
 
+  // Email OTP at signup. "on" = always, "off" = never, "auto" (default) = on when SMTP is configured (and always outside production,
+  // where codes are printed to the console), so a production site without working mail settings can never be locked out of signup.
+  emailVerification: (process.env.EMAIL_VERIFICATION || "auto").trim().toLowerCase(),
+  mailTimeoutMs: num(process.env.MAIL_TIMEOUT_MS, 8000), // hard cap for one verification email (Vercel Hobby functions stop at ~10s)
+
   smtp: {
     host: process.env.SMTP_HOST || "",
     port: num(process.env.SMTP_PORT, 587),

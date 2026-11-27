@@ -61,6 +61,7 @@ export async function bootstrap({ dbName, gateway } = {}) {
     MONGO_URI: `mongodb://127.0.0.1:27017/${dbName}`,
     JWT_SECRET: "test-secret-0123456789-0123456789-abcdef",
     DISABLE_RATE_LIMIT: "1",
+    EMAIL_VERIFICATION: process.env.EMAIL_VERIFICATION || "off", // existing tests sign up instantly; email-otp tests turn it on
     UPLOAD_DIR: uploads,
     PAYSTACK_SECRET_KEY: "sk_test_secret",
     PAYSTACK_BASE_URL: gateway.url,
